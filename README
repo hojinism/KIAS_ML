@@ -1,0 +1,9 @@
+# KIAS_ML
+
+You need to configure out environment yourself...
+after, try
+```
+source setup.sh
+cd TeamProject
+python run.py
+```
