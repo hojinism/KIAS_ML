@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import h5py
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_curve, auc
+
+from models import make_baseline_model, make_resnet50
 # GPU settings
 from tensorflow.compat.v1.keras.backend import set_session
 config = tf.compat.v1.ConfigProto()
@@ -54,20 +54,9 @@ print(f"@@@@ x_train shape: {x_train.shape} - y_train shape: {y_train.shape}")
 print(f"@@@@ x_test shape: {x_test.shape} - y_test shape: {y_test.shape}")
 
 # baseline model
-model = tf.keras.models.Sequential()
-model.add(Conv2D(16, activation='relu', kernel_size=3, padding='same', kernel_initializer='TruncatedNormal', input_shape=input_shape))
-model.add(Conv2D(16, activation='relu', kernel_size=3, padding='same', kernel_initializer='TruncatedNormal'))
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Conv2D(32, activation='relu', kernel_size=3, padding='same', kernel_initializer='TruncatedNormal'))
-model.add(Conv2D(32, activation='relu', kernel_size=3, padding='same', kernel_initializer='TruncatedNormal'))
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Flatten())
-model.add(Dense(256, activation='relu', kernel_initializer='TruncatedNormal'))
-model.add(Dropout(0.2))
-model.add(Dense(512, activation='relu', kernel_initializer='TruncatedNormal'))
-model.add(Dropout(0.2))
-model.add(Dense(1, activation='sigmoid', kernel_initializer='TruncatedNormal'))
-model.compile(loss='binary_crossentropy', optimizer=Adam(lr=args.init_lr), metrics=['accuracy'])
+model = make_baseline_model(input_shape, (32, 32, 256, 256))
+#model = make_resnet50(input_shape)
+model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=args.init_lr), metrics=['accuracy'])
 model.summary()
 
 # start training
@@ -86,6 +75,15 @@ history=model.fit(x_train, y_train,\
         callbacks=[reduce_lr, checkpoint_callback],\
         shuffle=True)
 
+model.load_weights(checkpoint_path)
+# Evaluate on train set
+score = model.evaluate(x_train, y_train, verbose=1)
+print('\nTrain loss / accuracy: %0.4f / %0.4f'%(score[0], score[1]))
+y_pred = model.predict(x_train)
+fpr_train, tpr_train, _ = roc_curve(y_train, y_pred)
+auc_train = auc(fpr_train, tpr_train)
+print("Train ROC AUC:", auc_train)
+
 # Evaluate on test set
 score = model.evaluate(x_test, y_test, verbose=1)
 print('\nTest loss / accuracy: %0.4f / %0.4f'%(score[0], score[1]))
@@ -96,9 +94,10 @@ print('Test ROC AUC:', roc_auc)
 
 plt.plot([0, 1], [0, 1], 'k--')
 #plt.legend(loc=2, prop={'size': 15})
-plt.plot(fpr, tpr, label='Model 1 (ROC-AUC = {:.3f})'.format(roc_auc))
+plt.plot(fpr_train, tpr_train, label=f"ROC-AUC(train) = {auc_train:.3f}")
+plt.plot(fpr, tpr, label=f"ROC-AUC(test) = {roc_auc:.3f}")
 plt.xlabel('False positive rate')
 plt.ylabel('True positive rate')
-plt.title('ROC curve')
+plt.title(args.name)
 plt.legend(loc='best')
 plt.savefig(f"plots/ROC_{args.name}.png")
